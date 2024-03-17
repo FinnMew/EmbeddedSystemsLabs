@@ -24,8 +24,8 @@ int main(void) {
     USART_Init(MYUBRR);                       // ??
     char txBuffer[9]; 
     
-    DDRB |= (1<<Trig);                        // sets PINB0 as output
-    DDRB &= ~(1<<Echo);                       // set PINB1 as input
+    DDRB = DDRB | (1<<Trig);                  // sets PINB0 as output
+    DDRB = DDRB & ~(1<<Echo);                 // set PINB1 as input
 
     double EchoTime ;
     double distance ;
