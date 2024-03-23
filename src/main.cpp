@@ -81,7 +81,7 @@ int setPrescaler_tc0(char option) {
         bitSet(TCCR0B, CS02) ;
         return 256 ;
     } if (option == 5) {          // T = 1/(16000000/1024) = 64e-6
-        bitSet(TCCR0B, CS01) ;
+        bitSet(TCCR0B, CS00) ;
         bitSet(TCCR0B, CS02) ;
         return 1024 ;
     } else {
