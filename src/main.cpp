@@ -1,88 +1,176 @@
+// master
+
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <math.h>
+#include <avr/interrupt.h>
 
-#define bitSet(reg, n) (reg |= 1 << n)
-#define bitRead(reg,n) (reg & (1 << n))
-#define bitClear(reg, n) (reg &= ~(1 << n))
+#include "usart.h"
+#include "bit.h"    
 
-#define FOSC 16000000
-#define BAUD 9600
-#define MYUBRR FOSC / 16 / BAUD - 1
+#define SS PB2
+#define MOSI PB3
+#define MISO PB4
+#define SCK PB5
 
-void USART_Init(unsigned int ubrr);
-void USART_Transmit(unsigned char data);
-void txString(char *pStr);
+#define pinTemp PC0
 
-#define Trig PINB0
-#define Echo PINB1
+int readADC(unsigned char pin) ;
 
-int main(void) {
+volatile float tempC ;
+float value_ADC ;
+volatile unsigned char tempReturned ;
 
-    USART_Init(MYUBRR);                       // ??
-    char txBuffer[9]; 
-    
-    DDRB = DDRB | (1<<Trig);                  // sets PINB0 as output
-    DDRB = DDRB & ~(1<<Echo);                 // set PINB1 as input
-
-    double EchoTime ;
-    double distance ;
-    
-    while (1) {
-        
-        bitClear(PORTB, Trig) ;               // clear/reset Triger values
-        bitClear(PORTB, Echo) ;               // clear/reset Echo values
-
-        bitSet(PORTB, Trig) ;                 // set Triger to 1, turing sonic sensor on
-        _delay_us(60);                        // keep sensor on for 60us
-        bitClear(PORTB, Trig) ;               // clear/reset triger value, turn sonic sensor off
-
-        while(!bitRead(PINB, Echo)) ;         // while Echo value 0 wait, continue once echo returns 1
-
-        TCNT1 = 0;                            // Sets time/counter 1 to 0s
-        TCCR1B |= (1 << CS10);                // start time/counter 1 with no prescaling, so will count at same frequency as cpu clock
-
-        while(bitRead(PINB, Echo)) ;          // wait here while Echo is 1, timer is still counting in background
-        TCCR1B = 0;                           // stops timer/counter 1
-        EchoTime = TCNT1;                     // make EchoTime the value of the echo pluse that was just timed
-        distance = (EchoTime / 343 ) / 2;     // 343 is speed of sound
-
-        dtostrf(distance, 7, 3, txBuffer);    // converts distance (number) into a tring with 7 characters, 3 characters are after the decimal point and then stores this sting in txBuffer
-        
-        txString(">a:") ;                     // sends >a: over USART as message
-        txString(txBuffer) ;                  // sends contents of txBuffer over USART
-        USART_Transmit('\n') ;                // sends new line over USART
-
-        // everything repeats in while loop
-    }   
-        }
-    
-
-void USART_Init(unsigned int ubrr) {
-    
-    UBRR0H = (unsigned char) (ubrr >> 8);
-    UBRR0L = (unsigned char)ubrr;
-
-    UCSR0B = (1 << RXEN0) | (1 << TXEN0);
-
-    UCSR0C = (1 << USBS0) | (3 << UCSZ00) ;
+ISR(SPI_STC_vect) {
+    bitSet(PORTB, SS) ;
+    tempReturned = SPDR ;
 }
 
-void USART_Transmit(unsigned char data) {
-
-    while (!(UCSR0A & (1 << UDRE0)));
-
-    UDR0 = data;
+ISR(ADC_vect) {
+    value_ADC = readADC(pinTemp) ; // Reads how much light on photocell from conversion that just triggerd interupt
+    bitSet(ADCSRA, ADSC) ;   
 }
 
-void txString(char *pStr) {
+unsigned char FtoC(float) ;
+float CtoF(unsigned char tempReturned) ;
 
-    while (*pStr != '\0') {
-        USART_Transmit(*pStr);
-        pStr++;
+int main() {
+    usart_init(103) ; 
+   
+    bitSet(DDRB, MOSI) ;
+    bitClear(DDRB, MISO) ;
+    bitSet(DDRB, SCK) ;
+    bitSet(DDRB, SS) ;
+
+    bitClear(DDRC, pinTemp) ;
+
+    bitSet(SPCR, MSTR) ;
+    bitSet(SPCR, SPE) ;
+    bitSet(SPCR, SPIE) ;
+
+    bitSet(ADCSRA, ADPS2) ;     // Prescalar - 128
+    bitSet(ADCSRA, ADPS1) ;     // Prescalar - 128
+    bitSet(ADCSRA, ADPS0) ;     // Prescalar - 128
+    bitClear(ADMUX, ADLAR) ;    // setting 0 for 10 bit res - Result is right adjusted
+    bitSet(ADMUX, REFS0) ;      // Voltage reference selection - Avcc at AREFF pin
+    bitSet(ADCSRA, ADIE) ;      // Enable ADC intterupt
+    bitSet(ADCSRA, ADEN) ;      // Enables ADC
+    bitSet(ADCSRA, ADSC) ;      // Starts first conversion
+    sei() ;                     // Enable global intterupts
+
+    while(1) {
+       
+        double tempK = log(10000.0 * ((1023.0 / value_ADC - 1))) ;
+        tempK = 1 / (0.001129148 + (0.000234125 + (0.0000000876741 * tempK * tempK)) * tempK) ;
+        tempC = tempK - 273.15 ;
+
+        unsigned char chartempC = FtoC(tempC) ;
+
+        bitClear(PORTB, SS) ;
+        SPDR = chartempC ;
+        
+        usart_tx_string(">Temp Direct:") ;
+        usart_tx_float(tempC, 2, 3) ;
+        usart_transmit('    ') ;
+
+        float floatTempReturned = CtoF(tempReturned) ;
+        usart_tx_string(">Temp Returned:") ;
+        usart_tx_float(floatTempReturned, 2, 3) ;
+        usart_transmit('\n') ;
+
+        _delay_ms(100) ;
+    }
+    return 0 ;
+}
+
+int readADC(unsigned char pin) {
+    int wholeADC = ADCL ;       // Reads least significant 8 bits of photocell data but we want 10 bits so
+    wholeADC |= (ADCH << 8) ;   // We combine ADCL with the ADCH to get the last 2 making 10 bit resltuion with a 16 bit integer
+    return wholeADC ;
+}
+
+unsigned char FtoC(float x) {
+    
+    float scaled = 255.0 / (20) * (x - 20) ;
+    unsigned char charscaled = scaled ;
+    float justDecimals = scaled - charscaled ;
+
+    if(justDecimals>= 0.5) {
+        return charscaled + 1 ; // round up
+    } else {
+        return charscaled ; // round down
     }
 }
+
+float CtoF(unsigned char tempReturned) {
+    return (float)((float)tempReturned * (20) / 255.0 + 20) ;
+}
+
+
+
+// slave
+
+#include <avr/io.h>
+#include <stdlib.h>
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+
+#include "usart.h"
+#include "bit.h"
+
+
+#define SS PB2
+#define MOSI PB3
+#define MISO PB4
+#define SCK PB5
+
+
+volatile unsigned char tempReceived ;
+
+
+ISR(SPI_STC_vect) {
+   tempReceived = SPDR ;
+   SPDR = tempReceived ;
+}
+
+
+float CtoF(unsigned char tempReceived) ;
+
+
+int main() {
+
+
+  usart_init(103) ;
+
+
+  bitSet(DDRB, MISO) ;  
+  bitSet(SPCR, SPE) ;
+  bitSet(SPCR, SPIE) ;
+
+
+  sei() ;
+
+
+   while(1) {
+
+
+       float floatTempReceived = CtoF(tempReceived) ;
+       usart_tx_string(">Temp Received:") ;
+       usart_tx_float(floatTempReceived, 2, 3) ;
+       usart_transmit('\n') ;
+
+
+      _delay_ms(100) ;
+  }
+  return 0 ;
+}
+
+
+float CtoF(unsigned char tempReceived) {
+  return (float)((float)tempReceived * (20) / 255.0 + 20) ;
+}
+
 
 
