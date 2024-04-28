@@ -26,7 +26,7 @@ int main (void) {
         bitSet(PORTD, pinDirection2) ;      // Configs direction of motor
         bitClear(PORTD, pinDirection1) ;    // Configs direction of motor
         OCR1B = 3500 ;                      // Set compare 3000 - duty cycle of 30%
-        _delay_ms(2000) ;                   // Keep 30% duty cycle for 2 seconds
+        _delay_ms(2000) ;                   // Keep 35% duty cycle for 2 seconds
         OCR1B = 5000 ;                      // Set compare 5000 - duty cycle of 50%
         _delay_ms(2000) ;                   // Keep 50% duty cycle for 2 seconds
         OCR1B = 10000 ;                     // Set compare 10000 - duty cycle of 100%
@@ -34,7 +34,7 @@ int main (void) {
         bitSet(PORTD, pinDirection1) ;      // Configs direction of motor - changed from before
         bitClear(PORTD, pinDirection2) ;    // Configs direction of motor - changed from before
         OCR1B = 3500 ;                      // Set compare 3000 - duty cycle of 30%
-        _delay_ms(2000) ;                   // Keep 30% duty cycle for 2 seconds
+        _delay_ms(2000) ;                   // Keep 35% duty cycle for 2 seconds
         OCR1B = 5000 ;                      // Set compare 5000 - duty cycle of 50%
         _delay_ms(2000) ;                   // Keep 50% duty cycle for 2 seconds
         OCR1B = 10000 ;                     // Set compare 10000 - duty cycle of 100%
